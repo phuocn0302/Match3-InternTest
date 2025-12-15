@@ -6,7 +6,9 @@ using UnityEngine.UI;
 
 public class LevelCondition : MonoBehaviour
 {
-    public event Action ConditionCompleteEvent = delegate { };
+    
+    // true mean win, false otherwise
+    public event Action<bool> ConditionCompleteEvent = delegate { };
 
     protected Text m_txt;
 
@@ -26,6 +28,17 @@ public class LevelCondition : MonoBehaviour
     {
         m_txt = txt;
     }
+    
+    public virtual void Setup(float value, Text txt, BoardController boardController, BottomBarController bottomBarController)
+    {
+        m_txt = txt;
+    }
+
+    public virtual void Setup(float value, Text txt, GameManager mngr, BoardController boardController, 
+        BottomBarController bottomBarController)
+    {
+        m_txt = txt;
+    }
 
     protected virtual void UpdateText() { }
 
@@ -33,7 +46,14 @@ public class LevelCondition : MonoBehaviour
     {
         m_conditionCompleted = true;
 
-        ConditionCompleteEvent();
+        ConditionCompleteEvent(true);
+    }
+    
+    protected void OnConditionComplete(bool isWin)
+    {
+        m_conditionCompleted = true;
+
+        ConditionCompleteEvent(isWin);
     }
 
     protected virtual void OnDestroy()
