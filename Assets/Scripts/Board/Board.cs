@@ -74,6 +74,8 @@ public class Board
 
     internal void Fill()
     {
+        List<NormalItem.eNormalType> itemPool = Utils.GetBalancedItemPool(boardSizeX, boardSizeY);
+        
         for (int x = 0; x < boardSizeX; x++)
         {
             for (int y = 0; y < boardSizeY; y++)
@@ -81,26 +83,10 @@ public class Board
                 Cell cell = m_cells[x, y];
                 NormalItem item = new NormalItem();
 
-                List<NormalItem.eNormalType> types = new List<NormalItem.eNormalType>();
-                if (cell.NeighbourBottom != null)
-                {
-                    NormalItem nitem = cell.NeighbourBottom.Item as NormalItem;
-                    if (nitem != null)
-                    {
-                        types.Add(nitem.ItemType);
-                    }
-                }
+                NormalItem.eNormalType selectedType = itemPool[0];
+                itemPool.RemoveAt(0);
 
-                if (cell.NeighbourLeft != null)
-                {
-                    NormalItem nitem = cell.NeighbourLeft.Item as NormalItem;
-                    if (nitem != null)
-                    {
-                        types.Add(nitem.ItemType);
-                    }
-                }
-
-                item.SetType(Utils.GetRandomNormalTypeExcept(types.ToArray()));
+                item.SetType(selectedType);
                 item.SetView();
                 item.SetViewRoot(m_root);
 
@@ -108,6 +94,35 @@ public class Board
                 cell.ApplyItemPosition(false);
             }
         }
+    }
+    
+    public List<Cell> GetAllCellsWithItems()
+    {
+        List<Cell> activeCells = new List<Cell>();
+        for (int x = 0; x < boardSizeX; x++)
+        {
+            for (int y = 0; y < boardSizeY; y++)
+            {
+                Cell cell = m_cells[x, y];
+                if (cell != null && cell.Item != null)
+                {
+                    activeCells.Add(cell);
+                }
+            }
+        }
+        return activeCells;
+    }
+    
+    public bool IsEmpty()
+    {
+        for (int x = 0; x < boardSizeX; x++)
+        {
+            for (int y = 0; y < boardSizeY; y++)
+            {
+                if (m_cells[x, y].Item.View != null) return false;
+            }
+        }
+        return true;
     }
 
     internal void Shuffle()
