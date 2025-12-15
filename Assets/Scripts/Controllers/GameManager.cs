@@ -11,7 +11,9 @@ public class GameManager : MonoBehaviour
     public enum eLevelMode
     {
         TIMER,
-        MOVES
+        MOVES,
+        TIME_ATTACK,
+        NORMAL,
     }
 
     public enum eStateGame
@@ -21,6 +23,7 @@ public class GameManager : MonoBehaviour
         GAME_STARTED,
         PAUSE,
         GAME_OVER,
+        GAME_WIN,
     }
 
     private eStateGame m_state;
@@ -40,6 +43,7 @@ public class GameManager : MonoBehaviour
 
 
     private BoardController m_boardController;
+    private BottomBarController m_bottomBarController;
 
     private UIMainManager m_uiMenu;
 
@@ -64,6 +68,7 @@ public class GameManager : MonoBehaviour
     void Update()
     {
         if (m_boardController != null) m_boardController.Update();
+        if (m_bottomBarController != null) m_bottomBarController.Update();
     }
 
 
@@ -86,25 +91,46 @@ public class GameManager : MonoBehaviour
         m_boardController = new GameObject("BoardController").AddComponent<BoardController>();
         m_boardController.StartGame(this, m_gameSettings);
 
-        if (mode == eLevelMode.MOVES)
+        m_bottomBarController = new GameObject("BottomBarController").AddComponent<BottomBarController>();
+        m_bottomBarController.StartGame(this, m_gameSettings);
+        
+        m_boardController.OnCellSelected += HandleOnCellSelected;
+        m_bottomBarController.OnItemAdded += HandleOnItemAdded;
+        m_bottomBarController.OnBarChecked += m_boardController.CheckBoardEmpty;
+        
+        if (mode == eLevelMode.NORMAL)
         {
-            m_levelCondition = this.gameObject.AddComponent<LevelMoves>();
-            m_levelCondition.Setup(m_gameSettings.LevelMoves, m_uiMenu.GetLevelConditionView(), m_boardController);
+            m_levelCondition = this.gameObject.AddComponent<LevelNormal>();
+            m_levelCondition.Setup(m_gameSettings.LevelNormal,m_uiMenu.GetLevelConditionView(), m_boardController, m_bottomBarController);
+            
+            
+            
         }
-        else if (mode == eLevelMode.TIMER)
+        else if (mode == eLevelMode.TIME_ATTACK)
         {
-            m_levelCondition = this.gameObject.AddComponent<LevelTime>();
-            m_levelCondition.Setup(m_gameSettings.LevelMoves, m_uiMenu.GetLevelConditionView(), this);
+            m_levelCondition = this.gameObject.AddComponent<LevelTimeAttack>();
+            m_levelCondition.Setup(m_gameSettings.LevelTimeAttack, m_uiMenu.GetLevelConditionView(),this, m_boardController, m_bottomBarController);
+            
         }
 
         m_levelCondition.ConditionCompleteEvent += GameOver;
-
+        
         State = eStateGame.GAME_STARTED;
     }
 
-    public void GameOver()
+    public void SetAutoWin()
     {
-        StartCoroutine(WaitBoardController());
+        m_boardController.StartAutoWin();
+    }
+
+    public void SetAutoLose()
+    {
+        m_boardController.StartAutoLose();
+    }
+
+    public void GameOver(bool isWin)
+    {
+        StartCoroutine(WaitBoardController(isWin));
     }
 
     internal void ClearLevel()
@@ -115,9 +141,15 @@ public class GameManager : MonoBehaviour
             Destroy(m_boardController.gameObject);
             m_boardController = null;
         }
+
+        if (m_bottomBarController)
+        {
+            Destroy(m_bottomBarController.gameObject);
+            m_bottomBarController = null;
+        }
     }
 
-    private IEnumerator WaitBoardController()
+    private IEnumerator WaitBoardController(bool isWin)
     {
         while (m_boardController.IsBusy)
         {
@@ -126,14 +158,36 @@ public class GameManager : MonoBehaviour
 
         yield return new WaitForSeconds(1f);
 
-        State = eStateGame.GAME_OVER;
-
+        State = isWin ? eStateGame.GAME_WIN : eStateGame.GAME_OVER;
+        
         if (m_levelCondition != null)
         {
             m_levelCondition.ConditionCompleteEvent -= GameOver;
-
+            
+            m_boardController.OnCellSelected -= HandleOnCellSelected;
+            m_bottomBarController.OnItemAdded -= HandleOnItemAdded;
+            m_bottomBarController.OnBarChecked -= m_boardController.CheckBoardEmpty;
+            
             Destroy(m_levelCondition);
             m_levelCondition = null;
         }
     }
+    
+    private void HandleOnCellSelected(Cell cell)
+    {
+        if (cell != null && cell.Item is NormalItem)
+        {
+            m_bottomBarController.AddItem(cell.Item as NormalItem);
+        }
+    }
+
+    private void HandleOnItemAdded(Item item)
+    {
+        if (item.Cell != null)
+        {
+            item.Cell.Clickable = false;
+        }
+    }
+
+
 }
