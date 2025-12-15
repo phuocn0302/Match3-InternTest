@@ -8,6 +8,8 @@ using UnityEngine;
 public class BoardController : MonoBehaviour
 {
     public event Action OnMoveEvent = delegate { };
+    public event Action<Cell> OnCellSelected;
+    public event Action OnBoardCleared;
 
     public bool IsBusy { get; private set; }
 
@@ -25,11 +27,14 @@ public class BoardController : MonoBehaviour
 
     private List<Cell> m_potentialMatch;
 
+    private Cell m_lastHoveredCell;
+
     private float m_timeAfterFill;
 
     private bool m_hintIsShown;
 
     private bool m_gameOver;
+    private bool m_isAuto = false;
 
     public void StartGame(GameManager gameManager, GameSettings gameSettings)
     {
@@ -49,7 +54,6 @@ public class BoardController : MonoBehaviour
     private void Fill()
     {
         m_board.Fill();
-        FindMatchesAndCollapse();
     }
 
     private void OnGameStateChange(GameManager.eStateGame state)
@@ -64,7 +68,6 @@ public class BoardController : MonoBehaviour
                 break;
             case GameManager.eStateGame.GAME_OVER:
                 m_gameOver = true;
-                StopHints();
                 break;
         }
     }
@@ -74,24 +77,31 @@ public class BoardController : MonoBehaviour
     {
         if (m_gameOver) return;
         if (IsBusy) return;
+        if (m_isAuto) return;
 
-        if (!m_hintIsShown)
+        var hit = Physics2D.Raycast(m_cam.ScreenToWorldPoint(Input.mousePosition), Vector2.zero);
+        Cell currentCell = null;
+
+        if (hit.collider)
         {
-            m_timeAfterFill += Time.deltaTime;
-            if (m_timeAfterFill > m_gameSettings.TimeForHint)
+            Cell hitCell = hit.collider.GetComponent<Cell>();
+
+            if (hitCell != null && hitCell.Item != null)
             {
-                m_timeAfterFill = 0f;
-                ShowHint();
+                currentCell = hitCell;
             }
         }
 
+        AnimateHover(currentCell);
+
         if (Input.GetMouseButtonDown(0))
         {
-            var hit = Physics2D.Raycast(m_cam.ScreenToWorldPoint(Input.mousePosition), Vector2.zero);
-            if (hit.collider != null)
+            if (currentCell != null && currentCell.Clickable && currentCell.Item != null)
             {
-                m_isDragging = true;
-                m_hitCollider = hit.collider;
+                currentCell.Item.View.DOKill();
+                currentCell.Item.View.localScale = Vector3.one;
+                m_lastHoveredCell = null;
+                OnCellSelected?.Invoke(currentCell);
             }
         }
 
@@ -99,35 +109,25 @@ public class BoardController : MonoBehaviour
         {
             ResetRayCast();
         }
+    }
 
-        if (Input.GetMouseButton(0) && m_isDragging)
+    private void AnimateHover(Cell currentCell)
+    {
+        if (currentCell != m_lastHoveredCell)
         {
-            var hit = Physics2D.Raycast(m_cam.ScreenToWorldPoint(Input.mousePosition), Vector2.zero);
-            if (hit.collider != null)
+            if (m_lastHoveredCell != null && m_lastHoveredCell.Item != null && m_lastHoveredCell.Item.View != null)
             {
-                if (m_hitCollider != null && m_hitCollider != hit.collider)
-                {
-                    StopHints();
-
-                    Cell c1 = m_hitCollider.GetComponent<Cell>();
-                    Cell c2 = hit.collider.GetComponent<Cell>();
-                    if (AreItemsNeighbor(c1, c2))
-                    {
-                        IsBusy = true;
-                        SetSortingLayer(c1, c2);
-                        m_board.Swap(c1, c2, () =>
-                        {
-                            FindMatchesAndCollapse(c1, c2);
-                        });
-
-                        ResetRayCast();
-                    }
-                }
+                m_lastHoveredCell.Item.View.DOKill();
+                m_lastHoveredCell.Item?.View.DOScale(1.0f, 0.2f);
             }
-            else
+
+            if (currentCell != null && currentCell.Item != null && currentCell.Item.View != null)
             {
-                ResetRayCast();
+                currentCell.Item.View.DOKill();
+                currentCell.Item.View.DOScale(1.2f, 0.5f).SetLoops(-1, LoopType.Yoyo);
             }
+
+            m_lastHoveredCell = currentCell;
         }
     }
 
@@ -135,6 +135,113 @@ public class BoardController : MonoBehaviour
     {
         m_isDragging = false;
         m_hitCollider = null;
+    }
+    
+    [ContextMenu("StartAutoLose")]
+    public void StartAutoLose()
+    {
+        m_isAuto = true;
+        StartCoroutine(AutoLoseCoroutine());
+    }
+
+    private IEnumerator AutoLoseCoroutine()
+    {
+        List<NormalItem.eNormalType> pickedTypes = new List<NormalItem.eNormalType>();
+
+        while (!m_gameOver)
+        {
+            var allCells = m_board.GetAllCellsWithItems();
+
+            if (allCells.Count == 0) yield break;
+
+            Cell targetCell = null;
+
+            targetCell = allCells.FirstOrDefault(c =>
+                c.Item is NormalItem item && !pickedTypes.Contains(item.ItemType));
+
+            if (targetCell == null)
+            {
+                targetCell = allCells[UnityEngine.Random.Range(0, allCells.Count)];
+            }
+
+            if (targetCell != null && targetCell.Clickable)
+            {
+                if (targetCell.Item != null && targetCell.Item.View != null)
+                {
+                    targetCell.Item.View.DOKill();
+                    targetCell.Item.View.localScale = Vector3.one;
+
+                    pickedTypes.Add((targetCell.Item as NormalItem).ItemType);
+                }
+
+                if (m_lastHoveredCell == targetCell) m_lastHoveredCell = null;
+
+                OnCellSelected?.Invoke(targetCell);
+            }
+
+            yield return new WaitForSeconds(0.5f);
+        }
+    }
+    
+    [ContextMenu("StartAutoWin")]
+    public void StartAutoWin()
+    {
+        m_isAuto = true;
+        StartCoroutine(AutoWinCoroutine());
+    }
+
+    private IEnumerator AutoWinCoroutine()
+    {
+        List<Cell> remainingCells = m_board.GetAllCellsWithItems();
+
+        while (!m_gameOver)
+        {
+            if (remainingCells.Count == 0)
+            {
+                yield break;
+            }
+
+            var matchGroup = remainingCells
+                .Where(c => c.Item != null) 
+                .GroupBy(c => (c.Item as NormalItem).ItemType)
+                .FirstOrDefault(g => g.Count() >= 3);
+
+            if (matchGroup != null)
+            {
+                var cellsToClick = matchGroup.Take(3).ToList();
+
+                foreach (var cell in cellsToClick)
+                {
+                    if (m_gameOver) yield break;
+
+                    if (cell.Item != null && cell.Item.View != null)
+                    {
+                        cell.Item.View.DOKill();
+                        cell.Item.View.localScale = Vector3.one;
+                    }
+                
+                    if (m_lastHoveredCell == cell) m_lastHoveredCell = null;
+
+                    OnCellSelected?.Invoke(cell);
+
+                    remainingCells.Remove(cell);
+
+                    yield return new WaitForSeconds(0.5f);
+                }
+            }
+            else
+            {
+                yield break;
+            }
+        }
+    }
+
+    public void CheckBoardEmpty()
+    {
+        if (m_board.IsEmpty())
+        {
+            OnBoardCleared?.Invoke();
+        }
     }
 
     private void FindMatchesAndCollapse(Cell cell1, Cell cell2)
@@ -161,10 +268,7 @@ public class BoardController : MonoBehaviour
 
             if (matches.Count < m_gameSettings.MatchesMin)
             {
-                m_board.Swap(cell1, cell2, () =>
-                {
-                    IsBusy = false;
-                });
+                m_board.Swap(cell1, cell2, () => { IsBusy = false; });
             }
             else
             {
@@ -224,7 +328,7 @@ public class BoardController : MonoBehaviour
             matches[i].ExplodeItem();
         }
 
-        if(matches.Count > m_gameSettings.MatchesMin)
+        if (matches.Count > m_gameSettings.MatchesMin)
         {
             m_board.ConvertNormalToBonus(matches, cellEnd);
         }

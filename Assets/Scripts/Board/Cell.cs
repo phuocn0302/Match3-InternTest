@@ -3,6 +3,7 @@ using UnityEngine;
 
 public class Cell : MonoBehaviour
 {
+    public bool Clickable = true;
     public int BoardX { get; private set; }
 
     public int BoardY { get; private set; }
