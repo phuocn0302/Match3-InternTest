@@ -1,5 +1,7 @@
 # Match3 Intern Test
 
+[![Video Showcase](https://img.youtube.com/vi/mHSOQYPiwGg/0.jpg)](https://www.youtube.com/watch?v=mHSOQYPiwGg)
+
 + Task 1: Change item sprite in ItemPrefab (See [Commit #9a3990a](https://github.com/phuocn0302/Match3-InternTest/commit/9a3990a015bd1d7c4997ab413832a4dcbd43421f))
 
 + Task 2 & 3:
